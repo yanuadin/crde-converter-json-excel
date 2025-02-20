@@ -74,7 +74,8 @@ public partial class MainWindow : Window
                     else
                         rowHeader = ws.Dimension.End.Row + 1;
 
-                    header.Value<JObject>("StrategyOneRequest").Value<JObject>("Body").Remove("Application_Header");
+                    JObject hdr = (JObject) header.First.First.Last.First;
+                    hdr.Remove("Application_Header");
 
                     JObject headerJSON = new JObject();
                     headerJSON["name"] = fileName;
@@ -83,7 +84,7 @@ public partial class MainWindow : Window
                     ws.Hidden = eWorkSheetHidden.VeryHidden;
 
                     // Start Recursive Looping
-                    addSheet((JObject)jsonObject["StrategyOneRequest"]["Body"], package, null, 1, "-", 0);
+                    addSheet((JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
                 }
 
                 // Save Excel file
@@ -106,139 +107,7 @@ public partial class MainWindow : Window
             // Browse for the Excel file
             JArray files = BrowseButton(sender, e, "excel");
 
-            foreach (JObject file in files)
-            {
-                string filePath = (string) file["path"];
-                string fileName = (string) file["name"];
-
-                // Set EPPlus license context (required for non-commercial use)
-                ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-                // Read the Excel file
-                using (var package = new ExcelPackage(new FileInfo(filePath)))
-                {
-                    var workbook = package.Workbook;
-                    JArray excelData = new JArray();
-
-                    // Loop through the worksheets in the Excel file to JSON
-                    for (int sheet = workbook.Worksheets.Count - 1; sheet >= 1; sheet--)
-                    {
-                        // Get the worksheet by name
-                        var worksheet = workbook.Worksheets[sheet];
-
-                        if (worksheet.Dimension != null)
-                        {
-                            // Get the number of rows and columns
-                            int rowCount = worksheet.Dimension.Rows;
-                            int colCount = worksheet.Dimension.Columns;
-
-                            // Read the header row (first row)
-                            var headers = new List<string>();
-                            var typeDatas = new List<string>();
-                            for (int col = 1; col <= colCount; col++)
-                            {
-                                headers.Add(worksheet.Cells[1, col].Text);
-                                typeDatas.Add(worksheet.Cells[2, col].Text);
-                            }
-
-                            // Empty Data
-                            if (rowCount < 3)
-                            {
-                                JObject emptyData = new JObject();
-                                JObject cover = new JObject();
-                                JObject variable = new JObject();
-
-                                emptyData["Id"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
-                                emptyData["Parent"] = worksheet.Cells[2, 2].Text;
-                                emptyData["ParentId"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
-                                variable["Variables"] = emptyData;
-                                cover[worksheet.Name] = variable;
-                                excelData.Add(cover);
-                            }
-
-                            // Read the data rows
-                            // Start from row 2 to skip header
-                            for (int row = 3; row <= rowCount; row++)
-                            {
-                                var rowData = new JObject();
-                                for (int col = 1; col <= colCount; col++)
-                                {
-                                    string header = headers[col - 1];
-                                    string typeData = typeDatas[col - 1];
-                                    string cellValue = worksheet.Cells[row, col].Text;
-
-                                    if (cellValue == "")
-                                        rowData[header] = cellValue;
-                                    else
-                                        rowData[header] = convertTryParse(cellValue, typeData);
-                                }
-
-                                //data.Add(rowData);
-                                JObject cover = new JObject();
-                                JObject variable = new JObject();
-                                variable["Variables"] = rowData;
-                                cover[worksheet.Name] = variable;
-                                excelData.Add(cover);
-                            }
-                        }
-                    }
-
-                    //Mapping Children to Parent
-                    int iterator = 0;
-                    foreach (JObject data in excelData)
-                    {
-                        foreach (var item in data)
-                        {
-                            JObject variable = (JObject)item.Value["Variables"];
-                            Int64 idExcel = convertTryParse(variable["Id"].ToString(), "Integer");
-                            Int64 parentIdExcel = convertTryParse(variable["ParentId"].ToString(), "Integer");
-                            string parentExcel = variable["Parent"].ToString();
-
-                            // Clean Id, Parent, ParentId
-                            variable.Remove("Id");
-                            variable.Remove("Parent");
-                            variable.Remove("ParentId");
-
-                            if (parentExcel != null && parentExcel != "" && parentExcel != "-")
-                            {
-                                //JObject parent = excelData.Children<JObject>().FirstOrDefault(pnt => true);
-                                JProperty parent = (JProperty)excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
-                                {
-                                    JProperty parent = ((JProperty)pnt);
-                                    return parent.Name == parentExcel && parent.Value["Variables"]["Id"] != null && (int)parent.Value["Variables"]["Id"] == parentIdExcel;
-                                });
-
-                                JToken parentValue = parent.Value;
-                                if (parentValue["Categories"] == null)
-                                    parentValue["Categories"] = new JArray();
-
-                                ((JArray)parentValue["Categories"]).Add(data);
-                            } else
-                            {
-                                // Set Header JSON
-                                ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
-                                string sheetHeader = ws.Cells[(int)idExcel, 1].Text;
-                                JObject headerJSON = JObject.Parse(sheetHeader);
-                                headerJSON["header"]["StrategyOneRequest"]["Body"] = excelData[iterator];
-
-                                // Convert the data to JSON
-                                string json = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
-
-                                // Write the JSON to the specified file path
-                                DateTime timeStamp = DateTime.Now;
-                                string workingDirectory = Environment.CurrentDirectory;
-                                string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
-
-                                string fname = headerJSON["name"] + "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".json";
-                                string jsonFilePath = projectDirectory + @"\output\json\" + fname;
-                                File.WriteAllText(jsonFilePath, json);
-                            }
-                        }
-                        iterator++;
-                    }
-                }
-            }
-            MessageBox.Show("Excel file successfully converted to JSON and saved");
+            convertExcelTo(files, "json");
         }
         catch (Exception ex)
         {
@@ -246,11 +115,187 @@ public partial class MainWindow : Window
         }
     }
 
-    private void btnConvertExcelToJSON_Click2(object sender, RoutedEventArgs e)
+    private void btnConvertExcelToTxt_Click(object sender, RoutedEventArgs e)
     {
-        string date = "28/11/2024 18:35:38";
-        DateTime dateValue = DateTime.Parse(date);
-        Trace.WriteLine(dateValue.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss"));
+        try
+        {
+            // Browse for the Excel file
+            JArray files = BrowseButton(sender, e, "excel");
+
+            convertExcelTo(files, "txt");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error: {ex.Message}");
+        }
+    }
+
+    private void convertExcelTo(JArray files, string convertType)
+    {
+        string message = "";
+
+        foreach (JObject file in files)
+        {
+            string filePath = (string)file["path"];
+            string fileName = (string)file["name"];
+
+            // Set EPPlus license context (required for non-commercial use)
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            // Read the Excel file
+            using (var package = new ExcelPackage(new FileInfo(filePath)))
+            {
+                var workbook = package.Workbook;
+                JArray excelData = new JArray();
+
+                // Loop through the worksheets in the Excel file to JSON
+                for (int sheet = workbook.Worksheets.Count - 1; sheet >= 1; sheet--)
+                {
+                    // Get the worksheet by name
+                    var worksheet = workbook.Worksheets[sheet];
+
+                    if (worksheet.Dimension != null)
+                    {
+                        // Get the number of rows and columns
+                        int rowCount = worksheet.Dimension.Rows;
+                        int colCount = worksheet.Dimension.Columns;
+
+                        // Read the header row (first row)
+                        var headers = new List<string>();
+                        var typeDatas = new List<string>();
+                        for (int col = 1; col <= colCount; col++)
+                        {
+                            headers.Add(worksheet.Cells[1, col].Text);
+                            typeDatas.Add(worksheet.Cells[2, col].Text);
+                        }
+
+                        // Empty Data
+                        if (rowCount < 3)
+                        {
+                            JObject emptyData = new JObject();
+                            JObject cover = new JObject();
+                            JObject variable = new JObject();
+
+                            emptyData["Id"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
+                            emptyData["Parent"] = worksheet.Cells[2, 2].Text;
+                            emptyData["ParentId"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
+                            variable["Variables"] = emptyData;
+                            cover[worksheet.Name] = variable;
+                            excelData.Add(cover);
+                        }
+
+                        // Read the data rows
+                        // Start from row 2 to skip header
+                        for (int row = 3; row <= rowCount; row++)
+                        {
+                            var rowData = new JObject();
+                            for (int col = 1; col <= colCount; col++)
+                            {
+                                string header = headers[col - 1];
+                                string typeData = typeDatas[col - 1];
+                                string cellValue = worksheet.Cells[row, col].Text;
+
+                                if (cellValue == "")
+                                    rowData[header] = cellValue;
+                                else
+                                    rowData[header] = convertTryParse(cellValue, typeData);
+                            }
+
+                            //data.Add(rowData);
+                            JObject cover = new JObject();
+                            JObject variable = new JObject();
+                            variable["Variables"] = rowData;
+                            cover[worksheet.Name] = variable;
+                            excelData.Add(cover);
+                        }
+                    }
+                }
+
+                //Mapping Children to Parent
+                int iterator = 0;
+                string stringJSONTxtOneLine = "";
+                foreach (JObject data in excelData)
+                {
+                    foreach (var item in data)
+                    {
+                        JObject variable = (JObject)item.Value["Variables"];
+                        Int64 idExcel = convertTryParse(variable["Id"].ToString(), "Integer");
+                        Int64 parentIdExcel = convertTryParse(variable["ParentId"].ToString(), "Integer");
+                        string parentExcel = variable["Parent"].ToString();
+
+                        // Clean Id, Parent, ParentId
+                        variable.Remove("Id");
+                        variable.Remove("Parent");
+                        variable.Remove("ParentId");
+
+                        if (parentExcel != null && parentExcel != "" && parentExcel != "-")
+                        {
+                            //JObject parent = excelData.Children<JObject>().FirstOrDefault(pnt => true);
+                            JProperty parent = (JProperty)excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
+                            {
+                                JProperty parent = ((JProperty)pnt);
+                                return parent.Name == parentExcel && parent.Value["Variables"]["Id"] != null && (int)parent.Value["Variables"]["Id"] == parentIdExcel;
+                            });
+
+                            JToken parentValue = parent.Value;
+                            if (parentValue["Categories"] == null)
+                                parentValue["Categories"] = new JArray();
+
+                            ((JArray)parentValue["Categories"]).Add(data);
+                        }
+                        else
+                        {
+                            // Arrange File Name
+                            DateTime timeStamp = DateTime.Now;
+                            string workingDirectory = Environment.CurrentDirectory;
+                            string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
+
+                            // Set Header JSON
+                            ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
+                            string sheetHeader = ws.Cells[(int)idExcel, 1].Text;
+                            JObject headerJSON = JObject.Parse(sheetHeader);
+                            headerJSON["header"]["StrategyOneRequest"]["Body"] = excelData[iterator];
+
+                            if(convertType == "json")
+                            {
+                                // Convert the data to JSON
+                                string json = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
+
+                                // Save the JSON file
+                                string fname = headerJSON["name"] + "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".json";
+                                string jsonFilePath = projectDirectory + @"\output\json\" + fname;
+                                File.WriteAllText(jsonFilePath, json);
+                                message = "Excel file successfully converted and saved to JSON folder";
+                            } else if (convertType == "txt") {
+                                if(stringJSONTxtOneLine == "")
+                                    stringJSONTxtOneLine = JsonConvert.SerializeObject(headerJSON["header"]);
+                                else
+                                    stringJSONTxtOneLine += Environment.NewLine + JsonConvert.SerializeObject(headerJSON["header"]);
+                            } else
+                                message = "Invalid Convert Type";
+                        }
+                    }
+                    iterator++;
+                }
+
+                if (convertType == "txt")
+                {
+                    // Arrange File Name
+                    DateTime timeStamp = DateTime.Now;
+                    string workingDirectory = Environment.CurrentDirectory;
+                    string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
+
+                    // Save the TXT file
+                    string fname = "MultipleFiles-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".txt";
+                    string jsonFilePath = projectDirectory + @"\output\txt\" + fname;
+                    File.WriteAllText(jsonFilePath, stringJSONTxtOneLine);
+
+                    message = "Excel file successfully converted and saved to TXT folder";
+                }
+            }
+        }
+
+        MessageBox.Show(message);
     }
 
     private dynamic convertTryParse(dynamic value, string typeData)
