@@ -23,6 +23,12 @@ using System;
 using System.Windows.Markup;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Reflection;
+using CRDEConverterJsonExcel.core;
+using System.Net.Http.Json;
+using System.Xml.Linq;
 
 namespace CRDEConverterJsonExcel;
 
@@ -46,14 +52,11 @@ public partial class MainWindow : Window
                 JArray files = BrowseButton(sender, e, "json");
 
                 // Arrange File Name
-                DateTime timeStamp = DateTime.Now;
-                string workingDirectory = Environment.CurrentDirectory;
-                string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
                 string fname = (string) files.First["name"];
                 if (files.Count > 1)
                     fname = "MultipleFiles";
 
-                fname += "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".xlsx";
+                fname += "-" + getTimeStampNow() + ".xlsx";
 
                 // Loop through the multiple files
                 foreach (JObject file in files)
@@ -62,41 +65,19 @@ public partial class MainWindow : Window
                     string fileName = (string) file["name"];
                     string jsonContent = File.ReadAllText(filePath);
 
-                    // Parse JSON
-                    JObject jsonObject = JObject.Parse(jsonContent);
-                    JObject header = JObject.Parse(jsonContent);
-
-                    // Write data header
-                    ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
-                    int rowHeader = 1;
-                    if (ws == null)
-                        ws = package.Workbook.Worksheets.Add("#HEADER#");
-                    else
-                        rowHeader = ws.Dimension.End.Row + 1;
-
-                    JObject hdr = (JObject) header.First.First.Last.First;
-                    hdr.Remove("Application_Header");
-
-                    JObject headerJSON = new JObject();
-                    headerJSON["name"] = fileName;
-                    headerJSON["header"] = header;
-                    ws.Cells[rowHeader, 1].Value = headerJSON.ToString();
-                    ws.Hidden = eWorkSheetHidden.VeryHidden;
-
-                    // Start Recursive Looping
-                    addSheet((JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
+                    convertJSONToExcel(package, jsonContent, fileName);
                 }
 
                 // Save Excel file
-                string excelFilePath = projectDirectory + @"\output\excel\" + fname;
+                string excelFilePath = getProjectDirectory() + @"\output\excel\" + fname;
                 package.SaveAs(new FileInfo(excelFilePath));
 
-                MessageBox.Show("Conversion successful! File saved to " + excelFilePath);
+                MessageBox.Show(@"[SUCCESS] Conversion successful! File saved to \ouput\excel");
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Error: " + ex.Message);
+            MessageBox.Show("[FAILED] Error: " + ex.Message);
         }
     }
 
@@ -107,11 +88,14 @@ public partial class MainWindow : Window
             // Browse for the Excel file
             JArray files = BrowseButton(sender, e, "excel");
 
-            convertExcelTo(files, "json");
+            JObject result = convertExcelTo(files, "json");
+
+            // Send Request to CRDE
+            postRequestCRDE(result["json"].ToString(), result["fileName"].ToString());
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error: {ex.Message}");
+            MessageBox.Show($"[FAILED] Error: {ex.Message}");
         }
     }
 
@@ -126,13 +110,42 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error: {ex.Message}");
+            MessageBox.Show($"[FAILED] Error: {ex.Message}");
         }
     }
 
-    private void convertExcelTo(JArray files, string convertType)
+    private void convertJSONToExcel(ExcelPackage package, string json, string fileName)
+    {
+        // Parse JSON
+        JObject jsonObject = JObject.Parse(json);
+        JObject header = JObject.Parse(json);
+
+        // Write data header
+        ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
+        int rowHeader = 1;
+        if (ws == null)
+            ws = package.Workbook.Worksheets.Add("#HEADER#");
+        else
+            rowHeader = ws.Dimension.End.Row + 1;
+
+        // Remove Application Header
+        JObject hdr = (JObject)header.First.First.Last.First;
+        hdr.Remove("Application_Header");
+
+        JObject headerJSON = new JObject();
+        headerJSON["name"] = fileName;
+        headerJSON["header"] = header;
+        ws.Cells[rowHeader, 1].Value = headerJSON.ToString();
+        ws.Hidden = eWorkSheetHidden.VeryHidden;
+
+        // Start Recursive Looping with parameter Application Header as JObject
+        addSheet((JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
+    }
+
+    private JObject convertExcelTo(JArray files, string convertType)
     {
         string message = "";
+        JObject result = new JObject();
 
         foreach (JObject file in files)
         {
@@ -213,7 +226,8 @@ public partial class MainWindow : Window
 
                 //Mapping Children to Parent
                 int iterator = 0;
-                string stringJSONTxtOneLine = "";
+                string jsonString = "";
+                int countApplicationHeader = 0;
                 foreach (JObject data in excelData)
                 {
                     foreach (var item in data)
@@ -233,7 +247,7 @@ public partial class MainWindow : Window
                             //JObject parent = excelData.Children<JObject>().FirstOrDefault(pnt => true);
                             JProperty parent = (JProperty)excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
                             {
-                                JProperty parent = ((JProperty)pnt);
+                                JProperty parent = (JProperty)pnt;
                                 return parent.Name == parentExcel && parent.Value["Variables"]["Id"] != null && (int)parent.Value["Variables"]["Id"] == parentIdExcel;
                             });
 
@@ -245,34 +259,37 @@ public partial class MainWindow : Window
                         }
                         else
                         {
-                            // Arrange File Name
-                            DateTime timeStamp = DateTime.Now;
-                            string workingDirectory = Environment.CurrentDirectory;
-                            string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
-
                             // Set Header JSON
                             ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
                             string sheetHeader = ws.Cells[(int)idExcel, 1].Text;
                             JObject headerJSON = JObject.Parse(sheetHeader);
                             headerJSON["header"]["StrategyOneRequest"]["Body"] = excelData[iterator];
 
-                            if(convertType == "json")
+                            if (convertType == "json")
                             {
                                 // Convert the data to JSON
-                                string json = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
+                                jsonString = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
+                                result["json"] = jsonString;
+                                result["fileName"] = headerJSON["name"];
 
                                 // Save the JSON file
-                                string fname = headerJSON["name"] + "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".json";
-                                string jsonFilePath = projectDirectory + @"\output\json\" + fname;
-                                File.WriteAllText(jsonFilePath, json);
-                                message = "Excel file successfully converted and saved to JSON folder";
-                            } else if (convertType == "txt") {
-                                if(stringJSONTxtOneLine == "")
-                                    stringJSONTxtOneLine = JsonConvert.SerializeObject(headerJSON["header"]);
+                                saveTextFile(@"\output\json\request\" + headerJSON["name"] + ".json", jsonString);
+                                message = @"[SUCCESS] Request was saved in \output\json\request, please wait until response has been done!";
+                            }
+                            else if (convertType == "txt")
+                            {
+                                if (jsonString == "")
+                                    jsonString = JsonConvert.SerializeObject(headerJSON["header"]);
                                 else
-                                    stringJSONTxtOneLine += Environment.NewLine + JsonConvert.SerializeObject(headerJSON["header"]);
-                            } else
-                                message = "Invalid Convert Type";
+                                    jsonString += Environment.NewLine + JsonConvert.SerializeObject(headerJSON["header"]);
+                            }
+                            else
+                            {
+                                message = "[FAILED] Invalid Convert Type";
+                                break;
+                            }
+
+                            countApplicationHeader++;
                         }
                     }
                     iterator++;
@@ -280,22 +297,23 @@ public partial class MainWindow : Window
 
                 if (convertType == "txt")
                 {
-                    // Arrange File Name
-                    DateTime timeStamp = DateTime.Now;
-                    string workingDirectory = Environment.CurrentDirectory;
-                    string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
+                    // Save the JSON file
+                    result["json"] = jsonString;
+                    if(countApplicationHeader == 1)
+                        result["fileName"] = fileName;
+                    else
+                        result["fileName"] = "MultipleFiles";
 
-                    // Save the TXT file
-                    string fname = "MultipleFiles-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".txt";
-                    string jsonFilePath = projectDirectory + @"\output\txt\" + fname;
-                    File.WriteAllText(jsonFilePath, stringJSONTxtOneLine);
+                    saveTextFile(@"\output\txt\"+ result["fileName"] + ".txt", jsonString);
 
-                    message = "Excel file successfully converted and saved to TXT folder";
+                    message = @"[SUCCESS] Excel file successfully converted and saved to \output\txt";
                 }
             }
         }
 
         MessageBox.Show(message);
+
+        return result;
     }
 
     private dynamic convertTryParse(dynamic value, string typeData)
@@ -464,6 +482,72 @@ public partial class MainWindow : Window
                     }
                 }
             }
+        }
+    }
+
+    private void saveTextFile(string filePath, string json)
+    {
+        // Arrange File Name
+        string fileName = filePath.Split(@"\").Last().Split(".").First();
+        string extension = filePath.Split(@"\").Last().Split(".").Last();
+        string filePathWithoutName = string.Join(@"\", filePath.Split(@"\")[0..^1]) + @"\";
+
+        string fname = fileName + "-" + getTimeStampNow() + "." + extension;
+        string textFilePath = getProjectDirectory() + filePathWithoutName + fname;
+
+        // Save Text File
+        File.WriteAllText(textFilePath, json);
+    }
+
+    private string getProjectDirectory()
+    {
+        string workingDirectory = Environment.CurrentDirectory;
+        string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
+
+        return projectDirectory;
+    }
+
+    private string getTimeStampNow()
+    {
+        return DateTime.Now.ToString("yyyyMMddHHmmssffff");
+    }
+
+    private async void postRequestCRDE(string json, string saveFileNameResponse)
+    {
+        saveFileNameResponse = saveFileNameResponse + "_response";
+        // API endpoint
+        string apiUrl = "https://crde-etl-uat.mylab.local/api/v1/s1/online";
+
+        // Parse JSON
+        JObject jsonObject = JObject.Parse(json);
+
+        // Data to send in the POST request
+        try
+        {
+            using (var package = new ExcelPackage())
+            {
+                // Call the API and get the response
+                string responseJsonText = await Api.PostApiDataAsync(apiUrl, jsonObject);
+                JObject parseResponseJson = JObject.Parse(responseJsonText);
+                string responseJsonIndent = JsonConvert.SerializeObject(parseResponseJson, Formatting.Indented);
+
+                // Save Response to JSON File
+                saveTextFile(@"\output\json\response\" + saveFileNameResponse + ".json", responseJsonIndent);
+                MessageBox.Show(@"[SUCCESS] Response was saved in \output\json\response");
+
+                // Convert Response to Excel
+                convertJSONToExcel(package, responseJsonText, saveFileNameResponse);
+
+                // Save Excel file
+                string excelFilePath = getProjectDirectory() + @"\output\excel\" + saveFileNameResponse + '-' + getTimeStampNow() + ".xlsx";
+                package.SaveAs(new FileInfo(excelFilePath));
+
+                MessageBox.Show("[SUCCESS] " + saveFileNameResponse + @" Save Response was successful! File saved to \output\excel");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"[API_FAILED] An error occurred: {ex.Message}", "Error");
         }
     }
 }

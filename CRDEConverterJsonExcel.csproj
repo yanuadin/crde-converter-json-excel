@@ -9,13 +9,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="output\NewFolder\**" />
+    <EmbeddedResource Remove="output\NewFolder\**" />
+    <None Remove="output\NewFolder\**" />
+    <Page Remove="output\NewFolder\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="EPPlus" Version="7.6.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="output\excel\" />
-    <Folder Include="output\json\" />
+    <Folder Include="output\json\response\" />
+    <Folder Include="output\json\request\" />
+    <Folder Include="output\txt\" />
     <Folder Include="sample\" />
   </ItemGroup>
 
