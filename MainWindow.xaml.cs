@@ -184,8 +184,6 @@ public partial class MainWindow : Window
                     }
                 }
 
-                // ================ Start Cara Kedua =======================
-
                 //Mapping to JSON
                 foreach (JObject data in excelData)
                 {
@@ -222,8 +220,6 @@ public partial class MainWindow : Window
                         }
                     }
                 }
-
-                // ================ End Cara Kedua =======================
 
                 // Set Header JSON
                 ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
@@ -396,19 +392,6 @@ public partial class MainWindow : Window
                         addSheet((JObject)property.Value, package, package.Workbook.Worksheets[property.Key], package.Workbook.Worksheets[property.Key].Dimension.End.Row, parent, parentId, property.Key);
                     }
                 }
-            }
-        }
-    }
-    private void btnConvertExcelToJSON_Click2(object sender, RoutedEventArgs e)
-    {
-        Dictionary<string, List<string>> asd = new Dictionary<string, List<string>>();
-        asd.Add("name", ["yanu", "adi"]);
-        foreach (var item in asd)
-        {
-            Trace.WriteLine(item.Key);
-            foreach (var item2 in item.Value)
-            {
-                Trace.WriteLine(item2);
             }
         }
     }

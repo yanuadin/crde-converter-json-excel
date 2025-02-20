@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="output\json\" />
     <Folder Include="output\excel\" />
+    <Folder Include="output\json\" />
     <Folder Include="sample\" />
   </ItemGroup>
 

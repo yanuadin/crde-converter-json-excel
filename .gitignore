@@ -351,3 +351,4 @@ Temporary Items
 !src/Microsoft.DotNet.Wpf/src/WpfGfx/tools/csp/**/*.rsp
 
 sample/*
+output/*
