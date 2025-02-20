@@ -26,9 +26,6 @@ using System.Linq;
 
 namespace CRDEConverterJsonExcel;
 
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
 public partial class MainWindow : Window
 {
     Dictionary<string, List<string>> dictionaryHeader = new Dictionary<string, List<string>>();
@@ -44,9 +41,10 @@ public partial class MainWindow : Window
         try
         {
             string[] dialog = BrowseButton(sender, e, "json");
-            string filePath = dialog[0]; // Ganti dengan path file JSON Anda
-            string fileName = dialog[1]; // Ganti dengan path file JSON Anda
+            string filePath = dialog[0];
+            string fileName = dialog[1];
             string jsonContent = File.ReadAllText(filePath);
+
             // Parse JSON
             JObject jsonObject = JObject.Parse(jsonContent);
             JObject header = JObject.Parse(jsonContent);
@@ -61,6 +59,7 @@ public partial class MainWindow : Window
                 ws.Cells[1, 1].Value = header.ToString();
                 ws.Hidden = eWorkSheetHidden.VeryHidden;
 
+                // Start Recursive Looping
                 addSheet((JObject)jsonObject["StrategyOneRequest"]["Body"], package, null, 1, "-", 0);
 
                 // Save Excel file
@@ -69,7 +68,7 @@ public partial class MainWindow : Window
                 string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
 
                 string fname = fileName + "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".xlsx";
-                string excelFilePath = projectDirectory + @"\output\excel\" + fname; // Ganti dengan path output Excel yang diinginkan
+                string excelFilePath = projectDirectory + @"\output\excel\" + fname; 
                 package.SaveAs(new FileInfo(excelFilePath));
 
                 MessageBox.Show("Conversion successful! File saved to " + excelFilePath);
@@ -85,6 +84,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Browse for the Excel file
             string[] dialog = BrowseButton(sender, e, "excel");
             string filePath = dialog[0];
             string fileName = dialog[1];
@@ -97,19 +97,18 @@ public partial class MainWindow : Window
             {
                 var workbook = package.Workbook;
                 JArray excelData = new JArray();
-                //var excelData = new Dictionary<string, List<Dictionary<string, object>>>();
 
+                // Loop through the worksheets in the Excel file to JSON
                 for (int sheet = workbook.Worksheets.Count - 1; sheet >= 1; sheet--)
                 {
-                    var worksheet = workbook.Worksheets[sheet]; // Assuming the first sheet
+                    // Get the worksheet by name
+                    var worksheet = workbook.Worksheets[sheet]; 
 
                     if(worksheet.Dimension != null)
                     {
                         // Get the number of rows and columns
                         int rowCount = worksheet.Dimension.Rows;
                         int colCount = worksheet.Dimension.Columns;
-
-                        // Create a list to hold the data
 
                         // Read the header row (first row)
                         var headers = new List<string>();
@@ -120,29 +119,24 @@ public partial class MainWindow : Window
                             typeDatas.Add(worksheet.Cells[2, col].Text);
                         }
 
-                        //Data Kosong
+                        // Empty Data
                         if(rowCount < 3)
                         {
                             JObject emptyData = new JObject();
                             JObject cover = new JObject();
                             JObject variable = new JObject();
-                            Int64 id;
-                            Int64 parentId;
 
-                            Int64.TryParse(worksheet.Cells[2, 1].Text, out id);
-                            Int64.TryParse(worksheet.Cells[2, 1].Text, out parentId);
-
-                            emptyData["Id"] = id;
+                            emptyData["Id"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
                             emptyData["Parent"] = worksheet.Cells[2, 2].Text;
-                            emptyData["ParentId"] = parentId;
-
+                            emptyData["ParentId"] = convertTryParse(worksheet.Cells[2, 1].Text, "Integer");
                             variable["Variables"] = emptyData;
                             cover[worksheet.Name] = variable;
                             excelData.Add(cover);
                         }
 
                         // Read the data rows
-                        for (int row = 3; row <= rowCount; row++) // Start from row 2 to skip header
+                        // Start from row 2 to skip header
+                        for (int row = 3; row <= rowCount; row++) 
                         {
                             var rowData = new JObject();
                             for (int col = 1; col <= colCount; col++)
@@ -151,29 +145,12 @@ public partial class MainWindow : Window
                                 string typeData = typeDatas[col - 1];
                                 string cellValue = worksheet.Cells[row, col].Text;
 
-                                double tempDouble;
-                                Int64 tempInt;
                                 if (cellValue == "")
-                                {
                                     rowData[header] = cellValue;
-                                } else
-                                {
-                                    switch (typeData)
-                                    {
-                                        case "Integer":
-                                            Int64.TryParse(cellValue, out tempInt);
-                                            rowData[header] = tempInt;
-                                            break;
-                                        case "Float":
-                                            double.TryParse(cellValue, out tempDouble);
-                                            rowData[header] = tempDouble;
-                                            break;
-                                        default:
-                                            rowData[header] = cellValue;
-                                            break;
-                                    }
-                                }
+                                else
+                                    rowData[header] = convertTryParse(cellValue, typeData);
                             }
+
                             //data.Add(rowData);
                             JObject cover = new JObject();
                             JObject variable = new JObject();
@@ -184,18 +161,15 @@ public partial class MainWindow : Window
                     }
                 }
 
-                //Mapping to JSON
+                //Mapping Children to Parent
                 foreach (JObject data in excelData)
                 {
                     foreach (var item in data)
                     {
                         JObject variable = (JObject)item.Value["Variables"];
-                        Int64 idExcel;
-                        Int64 parentIdExcel;
+                        Int64 idExcel = convertTryParse(variable["Id"].ToString(), "Integer");
+                        Int64 parentIdExcel = convertTryParse(variable["ParentId"].ToString(), "Integer");
                         string parentExcel = variable["Parent"].ToString();
-
-                        Int64.TryParse(variable["Id"].ToString(), out idExcel);
-                        Int64.TryParse(variable["ParentId"].ToString(), out parentIdExcel);
 
                         // Clean Id, Parent, ParentId
                         variable.Remove("Id");
@@ -213,9 +187,8 @@ public partial class MainWindow : Window
 
                             JToken parentValue = parent.Value;
                             if (parentValue["Categories"] == null)
-                            {
                                 parentValue["Categories"] = new JArray();
-                            }
+
                             ((JArray)parentValue["Categories"]).Add(data);
                         }
                     }
@@ -236,7 +209,7 @@ public partial class MainWindow : Window
                 string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
 
                 string fname = fileName + "-" + timeStamp.ToString("yyyyMMddHHmmssffff") + ".json";
-                string jsonFilePath = projectDirectory + @"\output\json\" + fname; // Ganti dengan path output Excel yang diinginkan
+                string jsonFilePath = projectDirectory + @"\output\json\" + fname;
                 File.WriteAllText(jsonFilePath, json);
 
                 MessageBox.Show("Excel file successfully converted to JSON and saved to: " + jsonFilePath);
@@ -246,6 +219,30 @@ public partial class MainWindow : Window
         {
             MessageBox.Show($"Error: {ex.Message}");
         }
+    }
+
+    private dynamic convertTryParse(dynamic value, string typeData)
+    {
+        double tempDouble;
+        Int64 tempInt;
+        dynamic result;
+
+        switch (typeData)
+        {
+            case "Integer":
+                Int64.TryParse(value, out tempInt);
+                result = tempInt;
+                break;
+            case "Float":
+                double.TryParse(value, out tempDouble);
+                result = tempDouble;
+                break;
+            default:
+                result = value;
+                break;
+        }
+
+        return result;
     }
 
     private string[] BrowseButton(object sender, RoutedEventArgs e, string ext = "")
@@ -265,13 +262,7 @@ public partial class MainWindow : Window
                 break;
         }
 
-        OpenFileDialog dlg = new OpenFileDialog
-        {
-            Filter = filter,
-        };
-
-        // Set filter for file extension and default file extension 
-        //dlg.DefaultExt = ".json";
+        OpenFileDialog dlg = new OpenFileDialog { Filter = filter };
 
         // Display OpenFileDialog by calling ShowDialog method 
         Nullable<bool> result = dlg.ShowDialog();
@@ -289,6 +280,7 @@ public partial class MainWindow : Window
         return [filePath, fileName];
     }
 
+    // Recursive Looping
     private void addSheet(JObject data, ExcelPackage package, ExcelWorksheet worksheet = null, int startRow = 1, string parent = "", int parentId = 1, string parentName = "")
     {
         foreach (var property in data)
@@ -306,13 +298,9 @@ public partial class MainWindow : Window
                 if (property.Value.Count() == 0)
                 {
                     if (startRow == 1)
-                    {
                         row = startRow + 2;
-                    }
                     else
-                    {
                         valueStartRow = startRow - 1;
-                    }
 
                     worksheet.Cells[2, 1].Value = "Integer";
                     worksheet.Cells[2, 2].Value = "String";
@@ -324,17 +312,13 @@ public partial class MainWindow : Window
 
                 // DictionaryHeader
                 if (!dictionaryHeader.ContainsKey(worksheet.Name))
-                {
                     dictionaryHeader.Add(worksheet.Name, new List<string>());
-                }
 
                 foreach (var variable in (JObject) property.Value)
                 {
                     // Assign Dictionary Header
                     if (!dictionaryHeader[worksheet.Name].Contains(variable.Key))
-                    {
                         dictionaryHeader[worksheet.Name].Add(variable.Key);
-                    }
 
                     col = dictionaryHeader[worksheet.Name].IndexOf(variable.Key) + 4;
                     worksheet.Cells[1, col].Value = variable.Key;
@@ -345,7 +329,7 @@ public partial class MainWindow : Window
 
                     if (startRow == 1)
                     {
-                        //Set Header
+                        // Set Header
                         worksheet.Cells[row, 1].Value = "Integer";
                         worksheet.Cells[row, 2].Value = "String";
                         worksheet.Cells[row, 3].Value = "Integer";
@@ -353,16 +337,16 @@ public partial class MainWindow : Window
                         row = startRow + 2;
                     }
                     else
-                    {
                         valueStartRow = startRow - 1;
-                    }
-                    
+
                     worksheet.Cells[row, 1].Value = valueStartRow;
                     worksheet.Cells[row, 2].Value = parent;
                     worksheet.Cells[row, 3].Value = parentId;
                     worksheet.Cells[row, col].Value = (string) variable.Value;
                     col++;
                 }
+
+                // Hide Parent Child Pointer and Freeze Header
                 worksheet.Row(2).Hidden = true;
                 worksheet.Column(1).Hidden = true;
                 worksheet.Column(2).Hidden = true;
@@ -372,23 +356,19 @@ public partial class MainWindow : Window
             else if (property.Key == "Categories")
             {
                 foreach (var category in property.Value)
-                {
                     addSheet((JObject)category, package, null, 1, parentName, startRow);
-                }
             }
             else
             {
                 if(package.Workbook.Worksheets[property.Key] == null)
-                {
                     addSheet((JObject)property.Value, package, package.Workbook.Worksheets.Add(property.Key), 1, parent, parentId, property.Key);
-                } else
+                else
                 {
                     if(package.Workbook.Worksheets[property.Key].Dimension != null)
                     {
                         if (parentId > 1)
-                        {
                             parentId -= 1;
-                        }
+
                         addSheet((JObject)property.Value, package, package.Workbook.Worksheets[property.Key], package.Workbook.Worksheets[property.Key].Dimension.End.Row, parent, parentId, property.Key);
                     }
                 }
