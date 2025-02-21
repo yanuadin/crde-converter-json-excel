@@ -5,10 +5,32 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CRDEConverterJsonExcel"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="600" Width="1200">
     <Grid>
-        <Button x:Name="btnConvertJSONToExcel" Content="Convert JSON to Excel" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertJSONToExcel_Click" Width="200" Height="30" Margin="100,200,0,0"/>
-        <Button x:Name="btnConvertExcelToJSON" Content="Convert Excel to JSON" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertExcelToJSON_Click" Width="200" Height="30" Margin="500,150,0,0"/>
-        <Button x:Name="btnConvertExcelToTxt" Content="Convert Excel to Txt" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertExcelToTxt_Click" Width="200" Height="30" Margin="500,250,0,0"/>
+        <Button x:Name="btnConvertJSONToExcel" Content="JSON to Excel" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertJSONToExcel_Click" Width="200" Height="30" Margin="49,40,0,0"/>
+        <Button x:Name="btnConvertExcelToJSON" Content="Excel to JSON" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertExcelToJSON_Click" Width="200" Height="30" Margin="951,45,0,0"/>
+        <Button x:Name="btnConvertExcelToTxt" Content="Excel to Txt" HorizontalAlignment="Left" VerticalAlignment="Top" Click="btnConvertExcelToTxt_Click" Width="200" Height="30" Margin="951,95,0,0"/>
+        <ListBox x:Name="responseList" SelectionMode="Extended" Margin="49,205,633,112">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox IsChecked="{Binding isSelected}" VerticalAlignment="Center" Margin="5,0,5,0"/>
+                        <TextBlock Text="{Binding fileName}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <Label Content="Response" HorizontalAlignment="Left" Margin="49,163,0,0" VerticalAlignment="Top" FontSize="20" FontWeight="Bold"/>
+        <Label Content="Endpoint" HorizontalAlignment="Left" Margin="600,163,0,0" VerticalAlignment="Top" FontSize="20" FontWeight="Bold"/>
+        <ListBox x:Name="endpointList" SelectionMode="Extended" Margin="605,205,49,112">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton IsChecked="{Binding isSelected}" VerticalAlignment="Center" Margin="5,0,5,0" />
+                        <TextBlock Text="{Binding fileName}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
     </Grid>
 </Window>
