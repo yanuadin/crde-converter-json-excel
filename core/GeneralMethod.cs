@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -11,10 +12,7 @@ namespace CRDEConverterJsonExcel.core
     {
         public static string getProjectDirectory()
         {
-            string workingDirectory = Environment.CurrentDirectory;
-            string projectDirectory = Directory.GetParent(workingDirectory).Parent.Parent.FullName;
-
-            return projectDirectory;
+            return Environment.CurrentDirectory;
         }
 
         public static string getTimeStampNow()

@@ -31,6 +31,7 @@ using System.Net.Http.Json;
 using System.Xml.Linq;
 using System.Collections;
 using CRDEConverterJsonExcel.config;
+using System.Data;
 
 namespace CRDEConverterJsonExcel;
 
@@ -38,11 +39,24 @@ public partial class MainWindow : Window
 {
     Converter converter = new Converter();
     ConverterV2 converterV2 = new ConverterV2();
+    List<Item> lb_requestItems = new List<Item>();
+
+    // Define a class to represent each item in the ListBox
+    public class Item
+    {
+        public string fileName { get; set; }
+        public string json { get; set; }
+        public bool isSelected { get; set; }
+    }
 
     public MainWindow()
     {
         InitializeComponent();
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial; // Set license context for EPPlus
+
+        // Initialize Endpoint Combobox
+        foreach (string endpoint in CRDE.getAllEndpoint())
+            cb_endpoint.Items.Add(endpoint);
     }
 
     private void btnConvertJSONToExcel_Click(object sender, RoutedEventArgs e)
@@ -62,25 +76,26 @@ public partial class MainWindow : Window
                 fname += "-" + GeneralMethod.getTimeStampNow() + ".xlsx";
 
                 // Loop through the multiple files
+                int iterator = 0;
                 foreach (JObject file in files)
                 {
                     string filePath = file["path"].ToString();
                     string fileName = file["name"].ToString();
                     string jsonContent = File.ReadAllText(filePath);
 
-                    convertJSONToExcel(package, jsonContent, fileName);
+                    convertJSONToExcel(package, jsonContent, fileName, iterator++);
                 }
 
                 // Save Excel file
-                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\" + fname;
+                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\request\" + fname;
                 package.SaveAs(new FileInfo(excelFilePath));
 
-                MessageBox.Show(@"[SUCCESS] Conversion successful! File saved to \ouput\excel");
+                MessageBox.Show(@"[SUCCESS]: Conversion successful! File saved to \ouput\excel\request");
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show("[FAILED] Error: " + ex.Message);
+            MessageBox.Show("[FAILED]: Error: " + ex.Message);
         }
     }
 
@@ -102,12 +117,12 @@ public partial class MainWindow : Window
                 string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\" + fileName + "-" + GeneralMethod.getTimeStampNow() + ".xlsx";
                 package.SaveAs(new FileInfo(excelFilePath));
 
-                MessageBox.Show(@"[SUCCESS] Conversion successful! File saved to \ouput\excel");
+                MessageBox.Show(@"[SUCCESS]: Conversion successful! File saved to \ouput\excel");
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show("[FAILED] Error: " + ex.Message);
+            MessageBox.Show("[FAILED]: Error: " + ex.Message);
         }
     }
 
@@ -126,43 +141,21 @@ public partial class MainWindow : Window
         // Bind the list to the ListBox
         int successCount = 0;
         int errorCount = 0;
-        var items = new List<Item>();
+        lb_requestItems = new List<Item>();
         foreach (JObject res in result)
         {
             if (bool.Parse(res["success"].ToString()))
             {
                 successCount++;
-                items.Add(new Item { fileName = res["fileName"].ToString(), isSelected = false });
+                lb_requestItems.Add(new Item { fileName = res["fileName"].ToString(), json = res["json"].ToString(), isSelected = false });
             }
             else 
                 errorCount++;
         }
-        responseList.ItemsSource = items;
-
-        // Bind Endpoint To ListBox
-        var itemsEndpoint = new List<Item>();
-        if (successCount > 0)
-        {
-            foreach (string endpoint in CRDE.getAllEndpoint())
-            {
-                itemsEndpoint.Add(new Item { fileName = endpoint, isSelected = false });
-            }
-        }
-        endpointList.ItemsSource = itemsEndpoint;
-
-
-        // Send Request to CRDE
-        //postRequestCRDE(result["json"].ToString(), result["fileName"].ToString());
+        lb_requestList.ItemsSource = lb_requestItems;
 
         // Print Message Box
-        MessageBox.Show($"[SUCCESS] {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
-    }
-
-    // Define a class to represent each item in the ListBox
-    public class Item
-    {
-        public string fileName { get; set; }
-        public bool isSelected { get; set; }
+        MessageBox.Show($"[SUCCESS]: {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
     }
 
     private void btnConvertExcelToTxt_Click(object sender, RoutedEventArgs e)
@@ -190,10 +183,10 @@ public partial class MainWindow : Window
 
         //converter.convertExcelTo(files, "txt");
 
-        MessageBox.Show($"[SUCCESS] {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
+        MessageBox.Show($"[SUCCESS]: {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
     }
 
-    private void convertJSONToExcel(ExcelPackage package, string json, string fileName)
+    private void convertJSONToExcel(ExcelPackage package, string json, string fileName, int iterator)
     {
         // Parse JSON
         JObject jsonObject = JObject.Parse(json);
@@ -218,7 +211,7 @@ public partial class MainWindow : Window
         ws.Hidden = eWorkSheetHidden.VeryHidden;
 
         // Start Recursive Looping with parameter Application Header as JObject
-        converter.addSheet((JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
+        converter.addSheet(iterator, (JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
     }
 
     private void convertJSONToExcelV2(ExcelPackage package, string json, string fileName)
@@ -295,7 +288,33 @@ public partial class MainWindow : Window
         return allowedMultipleFiles ? files : file;
     }
 
-    private async void postRequestCRDE(string json, string saveFileNameResponse)
+    private void btnSendRequestToAPI_Click(object sender, RoutedEventArgs e)
+    {
+        if (cb_endpoint.Text == "")
+        {
+            MessageBox.Show("[WARNING]: Please select an endpoint!");
+        }
+        else
+        {
+            // Flush response list item
+            lb_responseList.Items.Clear();
+
+            // Send Request to API
+            List<Item> selectedRequestItem = lb_requestItems.FindAll(item => item.isSelected == true);
+            int iterator = 0;
+            if (selectedRequestItem.Count > 0)
+            {
+                foreach (Item it in selectedRequestItem)
+                {
+                    postRequestCRDE(it.json, it.fileName, iterator);
+                }
+            } else
+            {
+                MessageBox.Show("[WARNING]: Please select at least one request to send!");
+            }
+        }
+    }
+    private async void postRequestCRDE(string json, string saveFileNameResponse, int iterator)
     {
         saveFileNameResponse = saveFileNameResponse + "_response";
         // API endpoint
@@ -316,25 +335,39 @@ public partial class MainWindow : Window
 
                 // Save Response to JSON File
                 converter.saveTextFile(@"\output\json\response\" + saveFileNameResponse + ".json", responseJsonIndent);
-                MessageBox.Show(@"[SUCCESS] Response was saved in \output\json\response");
 
                 // Convert Response to Excel
-                convertJSONToExcel(package, responseJsonText, saveFileNameResponse);
+                convertJSONToExcel(package, responseJsonText, saveFileNameResponse, iterator);
 
                 // Save Excel file
-                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\" + saveFileNameResponse + '-' + GeneralMethod.getTimeStampNow() + ".xlsx";
+                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\response\" + saveFileNameResponse + '-' + GeneralMethod.getTimeStampNow() + ".xlsx";
                 package.SaveAs(new FileInfo(excelFilePath));
 
-                MessageBox.Show("[SUCCESS] " + saveFileNameResponse + @" Save Response was successful! File saved to \output\excel");
+                // Add to List Box Response
+                lb_responseList.Items.Add(new Item { fileName = saveFileNameResponse, json = json, isSelected = false });
+
+                MessageBox.Show("[SUCCESS]: [" + saveFileNameResponse + @"] Save Response was successful! File saved to \output\json\response and \output\excel\response");
             }
         }
         catch (HttpRequestException ex)
         {
-            MessageBox.Show($"[API_FAILED] {ex.StatusCode} : {ex.Message}", "Error");
+            MessageBox.Show($"[API_FAILED]: {ex.StatusCode} : {ex.Message}", "Error");
+
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"[API_FAILED] An error occurred: {ex.Message}", "Error");
+            MessageBox.Show($"[API_FAILED]: An error occurred: {ex.Message}", "Error");
+
         }
+    }
+
+    private void CheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (Item item in lb_requestItems)
+        {
+            item.isSelected = (bool) cb_selectAll.IsChecked;
+        }
+
+        lb_requestList.Items.Refresh();
     }
 }

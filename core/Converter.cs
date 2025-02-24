@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Diagnostics;
+using CRDEConverterJsonExcel.config;
 
 namespace CRDEConverterJsonExcel.core
 {
@@ -107,11 +108,6 @@ namespace CRDEConverterJsonExcel.core
                         Int64 parentIdExcel = convertTryParse(variable["ParentId"].ToString(), "Integer");
                         string parentExcel = variable["Parent"].ToString();
 
-                        // Clean Id, Parent, ParentId
-                        variable.Remove("Id");
-                        variable.Remove("Parent");
-                        variable.Remove("ParentId");
-
                         if (parentExcel != null && parentExcel != "" && parentExcel != "-")
                         {
                             JProperty parent = (JProperty)excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
@@ -148,7 +144,7 @@ namespace CRDEConverterJsonExcel.core
 
                                     // Save the JSON file
                                     saveTextFile(@"\output\json\request\" + headerJSON["name"] + ".json", jsonString);
-                                    result["message"] = @"[SUCCESS] Request was saved in \output\json\request, please wait until response has been done!";
+                                    result["message"] = @"[SUCCESS]: Request was saved in \output\json\request, please wait until response has been done!";
                                     result["success"] = true;
 
                                     resultCollection.Add(result);
@@ -160,14 +156,14 @@ namespace CRDEConverterJsonExcel.core
                                     else
                                         jsonString += Environment.NewLine + JsonConvert.SerializeObject(headerJSON["header"]);
 
-                                    result["message"] = @"[SUCCESS] Excel file successfully converted and saved to \output\txt";
+                                    result["message"] = @"[SUCCESS]: Excel file successfully converted and saved to \output\txt";
                                     result["success"] = true;
                                 }
                                 else
                                 {
                                     result["json"] = "";
                                     result["fileName"] = "";
-                                    result["message"] = "[FAILED] Invalid Convert Type";
+                                    result["message"] = "[FAILED]: Invalid Convert Type";
                                     result["success"] = false;
 
                                     break;
@@ -177,7 +173,7 @@ namespace CRDEConverterJsonExcel.core
                             {
                                 result["json"] = "";
                                 result["fileName"] = "";
-                                result["message"] = "[FAILED] [" + headerJSON["name"] + "] Convert was failed";
+                                result["message"] = "[FAILED]: [" + headerJSON["name"] + "] Convert was failed";
                                 result["success"] = false;
 
                                 continue;
@@ -188,6 +184,8 @@ namespace CRDEConverterJsonExcel.core
                         iterator++;
                     }
                 }
+
+                // Clean Id, Parent, And ParentId
 
                 try
                 {
@@ -209,12 +207,17 @@ namespace CRDEConverterJsonExcel.core
                 {
                     result["json"] = "";
                     result["fileName"] = "";
-                    result["message"] = "[FAILED] Convert was failed";
+                    result["message"] = "[FAILED]: Convert was failed";
                     result["success"] = false;
                 }
             }
 
             return resultCollection;
+        }
+
+        private void cleanIdParentAndParentId()
+        {
+
         }
 
         private dynamic convertTryParse(dynamic value, string typeData)
@@ -247,7 +250,7 @@ namespace CRDEConverterJsonExcel.core
         }
 
         // Recursive Looping
-        public void addSheet(JObject data, ExcelPackage package, ExcelWorksheet worksheet = null, int startRow = 1, string parent = "", int parentId = 1, string parentName = "")
+        public void addSheet(int iterator, JObject data, ExcelPackage package, ExcelWorksheet worksheet = null, int startRow = 1, string parent = "", int parentId = 1, string parentName = "")
         {
             foreach (var property in data)
             {
@@ -264,7 +267,9 @@ namespace CRDEConverterJsonExcel.core
                     if (property.Value.Count() == 0)
                     {
                         if (startRow == 1)
+                        {
                             row = startRow + 2;
+                        }
                         else
                             valueStartRow = startRow - 1;
 
@@ -289,9 +294,9 @@ namespace CRDEConverterJsonExcel.core
                         col = dictionaryHeader[worksheet.Name].IndexOf(variable.Key) + 4;
                         worksheet.Cells[1, col].Value = variable.Key;
 
-                        // Coloring Header Backround Cell
+                        // Coloring Header Background Cell
                         worksheet.Cells[1, col].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-                        worksheet.Cells[1, col].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.SkyBlue);
+                        worksheet.Cells[1, col].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Silver);
 
                         if (startRow == 1)
                         {
@@ -313,6 +318,10 @@ namespace CRDEConverterJsonExcel.core
                         worksheet.Cells[row, 2].Value = parent;
                         worksheet.Cells[row, 3].Value = parentId;
                         worksheet.Cells[row, col].Value = variable.Value.ToString();
+
+                        // Coloring  Background Cell
+                        worksheet.Cells[row, col].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(CRDE.getColorCells[iterator]);
                     }
 
                     // Hide Parent Child Pointer and Freeze Header
@@ -325,20 +334,22 @@ namespace CRDEConverterJsonExcel.core
                 else if (property.Key == "Categories")
                 {
                     foreach (var category in property.Value)
-                        addSheet((JObject)category, package, null, 1, parentName, startRow);
+                        addSheet(iterator, (JObject)category, package, null, 1, parentName, startRow);
                 }
                 else
                 {
+
+                    if (parentId > 1)
+                        parentId -= 1;
+
                     if (package.Workbook.Worksheets[property.Key] == null)
-                        addSheet((JObject)property.Value, package, package.Workbook.Worksheets.Add(property.Key), 1, parent, parentId, property.Key);
+                        addSheet(iterator, (JObject)property.Value, package, package.Workbook.Worksheets.Add(property.Key), 1, parent, parentId, property.Key);
                     else
                     {
                         if (package.Workbook.Worksheets[property.Key].Dimension != null)
                         {
-                            if (parentId > 1)
-                                parentId -= 1;
 
-                            addSheet((JObject)property.Value, package, package.Workbook.Worksheets[property.Key], package.Workbook.Worksheets[property.Key].Dimension.End.Row, parent, parentId, property.Key);
+                            addSheet(iterator, (JObject)property.Value, package, package.Workbook.Worksheets[property.Key], package.Workbook.Worksheets[property.Key].Dimension.End.Row, parent, parentId, property.Key);
                         }
                     }
                 }
