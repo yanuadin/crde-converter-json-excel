@@ -83,7 +83,7 @@ public partial class MainWindow : Window
                     string fileName = file["name"].ToString();
                     string jsonContent = File.ReadAllText(filePath);
 
-                    convertJSONToExcel(package, jsonContent, fileName, iterator++);
+                    converter.convertJSONToExcel(package, jsonContent, fileName, iterator++);
                 }
 
                 // Save Excel file
@@ -184,34 +184,6 @@ public partial class MainWindow : Window
         //converter.convertExcelTo(files, "txt");
 
         MessageBox.Show($"[SUCCESS]: {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
-    }
-
-    private void convertJSONToExcel(ExcelPackage package, string json, string fileName, int iterator)
-    {
-        // Parse JSON
-        JObject jsonObject = JObject.Parse(json);
-        JObject header = JObject.Parse(json);
-
-        // Write data header
-        ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
-        int rowHeader = 1;
-        if (ws == null)
-            ws = package.Workbook.Worksheets.Add("#HEADER#");
-        else
-            rowHeader = ws.Dimension.End.Row + 1;
-
-        // Remove Application Header
-        JObject hdr = (JObject)header.First.First.Last.First;
-        hdr.Remove("Application_Header");
-
-        JObject headerJSON = new JObject();
-        headerJSON["name"] = fileName;
-        headerJSON["header"] = header;
-        ws.Cells[rowHeader, 1].Value = headerJSON.ToString();
-        ws.Hidden = eWorkSheetHidden.VeryHidden;
-
-        // Start Recursive Looping with parameter Application Header as JObject
-        converter.addSheet(iterator, (JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
     }
 
     private void convertJSONToExcelV2(ExcelPackage package, string json, string fileName)
@@ -337,7 +309,7 @@ public partial class MainWindow : Window
                 converter.saveTextFile(@"\output\json\response\" + saveFileNameResponse + ".json", responseJsonIndent);
 
                 // Convert Response to Excel
-                convertJSONToExcel(package, responseJsonText, saveFileNameResponse, iterator);
+                converter.convertJSONToExcel(package, responseJsonText, saveFileNameResponse, iterator);
 
                 // Save Excel file
                 string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\response\" + saveFileNameResponse + '-' + GeneralMethod.getTimeStampNow() + ".xlsx";

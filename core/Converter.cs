@@ -18,6 +18,34 @@ namespace CRDEConverterJsonExcel.core
 
         private Dictionary<string, List<string>> dictionaryHeader = new Dictionary<string, List<string>>();
 
+        public void convertJSONToExcel(ExcelPackage package, string json, string fileName, int iterator)
+        {
+            // Parse JSON
+            JObject jsonObject = JObject.Parse(json);
+            JObject header = JObject.Parse(json);
+
+            // Write data header
+            ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
+            int rowHeader = 1;
+            if (ws == null)
+                ws = package.Workbook.Worksheets.Add("#HEADER#");
+            else
+                rowHeader = ws.Dimension.End.Row + 1;
+
+            // Remove Application Header
+            JObject hdr = (JObject)header.First.First.Last.First;
+            hdr.Remove("Application_Header");
+
+            JObject headerJSON = new JObject();
+            headerJSON["name"] = fileName;
+            headerJSON["header"] = header;
+            ws.Cells[rowHeader, 1].Value = headerJSON.ToString();
+            ws.Hidden = eWorkSheetHidden.VeryHidden;
+
+            // Start Recursive Looping with parameter Application Header as JObject
+            addSheet(iterator, (JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
+        }
+
         public JArray convertExcelTo(string fileName, string filePath, string convertType)
         {
             JArray resultCollection = new JArray();
@@ -68,8 +96,8 @@ namespace CRDEConverterJsonExcel.core
                         }
 
                         // Read the data rows
-                        // Start from row 2 to skip header
-                        for (int row = 3; row <= rowCount; row++)
+                        // Start from row 3 to skip header
+                        for (int row = rowCount; row >= 3; row--)
                         {
                             var rowData = new JObject();
                             for (int col = 1; col <= colCount; col++)
@@ -84,7 +112,6 @@ namespace CRDEConverterJsonExcel.core
                                     rowData[header] = convertTryParse(cellValue, typeData);
                             }
 
-                            //data.Add(rowData);
                             JObject cover = new JObject();
                             JObject variable = new JObject();
                             variable["Variables"] = rowData;
@@ -120,7 +147,7 @@ namespace CRDEConverterJsonExcel.core
                             if (parentValue["Categories"] == null)
                                 parentValue["Categories"] = new JArray();
 
-                            ((JArray)parentValue["Categories"]).Add(data);
+                            ((JArray)parentValue["Categories"]).AddFirst(data);
                         }
                         else
                         {
@@ -134,30 +161,26 @@ namespace CRDEConverterJsonExcel.core
                             {
                                 // Set Header JSON
                                 headerJSON["header"]["StrategyOneRequest"]["Body"] = excelData[iterator];
+                                headerJSON["header"] = cleanIdParentAndParentId((JObject)headerJSON["header"]);
 
                                 if (convertType == "json")
                                 {
                                     // Convert the data to JSON
-                                    jsonString = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
-                                    result["json"] = jsonString;
+                                    result["json"] = JsonConvert.SerializeObject(headerJSON["header"], Formatting.Indented);
                                     result["fileName"] = headerJSON["name"];
-
-                                    // Save the JSON file
-                                    saveTextFile(@"\output\json\request\" + headerJSON["name"] + ".json", jsonString);
-                                    result["message"] = @"[SUCCESS]: Request was saved in \output\json\request, please wait until response has been done!";
+                                    result["message"] = @"[SUCCESS]: Request was saved in \output\json\request";
                                     result["success"] = true;
 
                                     resultCollection.Add(result);
                                 }
                                 else if (convertType == "txt")
                                 {
-                                    if (jsonString == "")
-                                        jsonString = JsonConvert.SerializeObject(headerJSON["header"]);
-                                    else
-                                        jsonString += Environment.NewLine + JsonConvert.SerializeObject(headerJSON["header"]);
-
-                                    result["message"] = @"[SUCCESS]: Excel file successfully converted and saved to \output\txt";
+                                    result["json"] = JsonConvert.SerializeObject(headerJSON["header"]);
+                                    result["fileName"] = headerJSON["name"];
+                                    result["message"] = @"[SUCCESS]: Request was saved in \output\txt";
                                     result["success"] = true;
+
+                                    resultCollection.Add(result);
                                 }
                                 else
                                 {
@@ -187,37 +210,63 @@ namespace CRDEConverterJsonExcel.core
 
                 // Clean Id, Parent, And ParentId
 
-                try
+                foreach (JObject res in resultCollection)
                 {
-                    if (convertType == "txt")
+                    try
                     {
-                        // Save the JSON file
-                        result["json"] = jsonString;
-                        if (countApplicationHeader == 1)
-                            result["fileName"] = fileName;
-                        else
-                            result["fileName"] = "MultipleFiles";
+                        if (convertType == "json")
+                        {
+                            // Save the JSON file
+                            saveTextFile(@"\output\json\request\" + res["fileName"] + ".json", res["json"].ToString());
+                        } 
+                        else if (convertType == "txt")
+                        {
+                            if (res.Previous != null)
+                            {
+                                resultCollection[0]["json"] += Environment.NewLine + res["json"].ToString();
+                                resultCollection[0]["fileName"] = "MultipleFiles";
+                            }
 
-                        saveTextFile(@"\output\txt\" + result["fileName"] + ".txt", jsonString);
-
-                        resultCollection.Add(result);
+                            // Save the JSON file
+                            if (res.Next == null)
+                                saveTextFile(@"\output\txt\" + resultCollection[0]["fileName"] + ".txt", resultCollection[0]["json"].ToString());
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    result["json"] = "";
-                    result["fileName"] = "";
-                    result["message"] = "[FAILED]: Convert was failed";
-                    result["success"] = false;
+                    catch (Exception ex)
+                    {
+                        result["json"] = "";
+                        result["fileName"] = "";
+                        result["message"] = "[FAILED]: Convert was failed";
+                        result["success"] = false;
+                    }
                 }
             }
 
             return resultCollection;
         }
-
-        private void cleanIdParentAndParentId()
+        private JObject cleanIdParentAndParentId(JObject data)
         {
+            foreach (var property in data)
+            {
+                if (property.Value.GetType().ToString() == "Newtonsoft.Json.Linq.JObject" )
+                {
+                    if (property.Key == "Variables")
+                    {
+                        JObject variable = (JObject)property.Value;
+                        variable.Remove("Id");
+                        variable.Remove("Parent");
+                        variable.Remove("ParentId");
+                        data["Variables"] = variable;
+                    }
+                    else
+                        cleanIdParentAndParentId((JObject)property.Value);
+                }
+                else if (property.Value.GetType().ToString() == "Newtonsoft.Json.Linq.JArray" && property.Key == "Categories")
+                    foreach (var category in property.Value)
+                        cleanIdParentAndParentId((JObject)category);
+            }
 
+            return data;
         }
 
         private dynamic convertTryParse(dynamic value, string typeData)
