@@ -103,33 +103,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void btnConvertJSONToExcelV2_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            // Create Excel package
-            using (var package = new ExcelPackage())
-            {
-                JObject file = BrowseButton(sender, e, "json", false);
-                string filePath = file["path"].ToString();
-                string fileName = file["name"].ToString();
-                string jsonContent = File.ReadAllText(filePath);
-
-                convertJSONToExcelV2(package, jsonContent, fileName);
-
-                // Save Excel file
-                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\" + fileName + "-" + GeneralMethod.getTimeStampNow() + ".xlsx";
-                package.SaveAs(new FileInfo(excelFilePath));
-
-                MessageBox.Show(@"[SUCCESS]: Conversion successful! File saved to \ouput\excel");
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show("[FAILED]: Error: " + ex.Message);
-        }
-    }
-
     private void btnConvertExcelToJSON_Click(object sender, RoutedEventArgs e)
     {
         // Browse for the Excel file
@@ -190,6 +163,119 @@ public partial class MainWindow : Window
         MessageBox.Show($"[SUCCESS]: {successCount} files converted successfully, {errorCount} files failed to convert" + Environment.NewLine + Environment.NewLine + "File was saved in " + @"\output\json\request");
     }
 
+    private void btnExtractLogsToJSON_Click(object sender, RoutedEventArgs e)
+    {
+        // Browse for the Excel file
+        JArray files = BrowseButton(sender, e, "completed", true);
+        string processCode = "CIMBNiaga_Mortgage";
+
+        foreach (JObject file in files)
+        {
+            try
+            {
+                string filePath = file["path"].ToString();
+                string fileName = file["name"].ToString();
+                string jsonContent = File.ReadAllText(filePath);
+                JArray contentFile = new JArray();
+
+                using (TextReader reader = new StreamReader(filePath))
+                {
+                    string line;
+                    int lineNumber = 1;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        // RUNID
+                        if (lineNumber % 3 == 1)
+                        {
+                            string[] splitLine = line.Split("#");
+                            JObject arrangeRunId = new JObject();
+                            foreach (string runId in splitLine)
+                            {
+                                string[] runIdSplit = runId.Split(":");
+                                if (runIdSplit.Count() > 1)
+                                {
+                                    arrangeRunId[runIdSplit[0]] = runIdSplit[1];
+                                }
+                            }
+                            contentFile.Add(arrangeRunId);
+                        }
+
+                        // REQ
+
+                        // IO
+                        if (lineNumber % 3 == 0)
+                        {
+                            string[] splitLine = line.Split('\t');
+
+                            if (splitLine.Count() > 1)
+                            {
+                                // Get JSON String
+                                JArray jsonColletion = new JArray();
+                                for (int i = 2; i < splitLine.Count(); i++)
+                                {
+                                    if (splitLine[i] != "")
+                                        jsonColletion.Add(splitLine[i]);
+                                }
+                                contentFile[lineNumber / 3 - 1]["IO_JSON"] = jsonColletion;
+                            }
+                        }
+
+                        lineNumber++;
+                    }
+
+                    // Convert IO_JSON to JSON File
+                    foreach (JObject content in contentFile)
+                    {
+                        if (content["PROCESSCODE"].ToString() == processCode)
+                        {
+                            for (int i = 0; i < content["IO_JSON"].Count(); i++)
+                            {
+                                // Save Response to JSON File
+                                string typeJSON = i == 0 ? "req" : "res";
+                                string typeOutputFolder = i == 0 ? "request" : "response";
+                                string formattingIndentJSON = JsonConvert.SerializeObject(content["IO_JSON"][i], Formatting.Indented);
+
+                                converter.saveTextFile(@"\output\json\" + typeOutputFolder + @"\" + content["REQUESTID"] + ".json", formattingIndentJSON, typeJSON);
+                            }
+                        }
+                    }
+
+                    MessageBox.Show(@"[SUCCESS]: File was saved at \output\json\request and \output\json\response");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("[FAILED]: " + ex.Message);
+            }
+        }
+    }
+
+    private void btnConvertJSONToExcelV2_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Create Excel package
+            using (var package = new ExcelPackage())
+            {
+                JObject file = BrowseButton(sender, e, "json", false);
+                string filePath = file["path"].ToString();
+                string fileName = file["name"].ToString();
+                string jsonContent = File.ReadAllText(filePath);
+
+                convertJSONToExcelV2(package, jsonContent, fileName);
+
+                // Save Excel file
+                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\" + fileName + "-" + GeneralMethod.getTimeStampNow() + ".xlsx";
+                package.SaveAs(new FileInfo(excelFilePath));
+
+                MessageBox.Show(@"[SUCCESS]: Conversion successful! File saved to \ouput\excel");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("[FAILED]: Error: " + ex.Message);
+        }
+    }
     private void convertJSONToExcelV2(ExcelPackage package, string json, string fileName)
     {
         // Parse JSON
@@ -226,6 +312,9 @@ public partial class MainWindow : Window
                 break;
             case "excel":
                 filter = "Excel Files|*.xls;*.xlsx";
+                break;
+            case "completed":
+                filter = "Completed Files|*.COMPLETED";
                 break;
             default:
                 filter = "Json files (*.json)|*.json|Excel Files|*.xls;*.xlsx";
