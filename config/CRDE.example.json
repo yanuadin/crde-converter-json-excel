@@ -1,0 +1,14 @@
+{
+  "CURRENT_ENV": "X",
+  "COLOR_CELLS": [
+    "#FFFFFF",
+    "#000000"
+  ],
+  "ENVIRONMENT": [
+    {
+      "X": {
+        "ENDPOINT_REQUEST": "https://www.google.com"
+      }
+    }
+  ]
+}
