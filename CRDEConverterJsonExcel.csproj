@@ -10,9 +10,13 @@
 
   <ItemGroup>
     <Compile Remove="output\NewFolder\**" />
+    <Compile Remove="sample\**" />
     <EmbeddedResource Remove="output\NewFolder\**" />
+    <EmbeddedResource Remove="sample\**" />
     <None Remove="output\NewFolder\**" />
+    <None Remove="sample\**" />
     <Page Remove="output\NewFolder\**" />
+    <Page Remove="sample\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,7 +30,6 @@
     <Folder Include="output\json\response\" />
     <Folder Include="output\json\request\" />
     <Folder Include="output\txt\" />
-    <Folder Include="sample\" />
   </ItemGroup>
 
 </Project>
