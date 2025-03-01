@@ -10,15 +10,16 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Diagnostics;
 using CRDEConverterJsonExcel.config;
+using System.Drawing;
 
 namespace CRDEConverterJsonExcel.core
 {
     class Converter
     {
-
         private Dictionary<string, List<string>> dictionaryHeader = new Dictionary<string, List<string>>();
+        private CRDE config = new CRDE();
 
-        public void convertJSONToExcel(ExcelPackage package, string json, string fileName, int iterator)
+        public void convertJSONToExcel(ExcelPackage package, string json, int iterator)
         {
             // Parse JSON
             JObject jsonObject = JObject.Parse(json);
@@ -26,7 +27,7 @@ namespace CRDEConverterJsonExcel.core
 
             // Write data header
             ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
-            int rowHeader = 1;
+            int rowHeader = 3;
             if (ws == null)
                 ws = package.Workbook.Worksheets.Add("#HEADER#");
             else
@@ -36,17 +37,73 @@ namespace CRDEConverterJsonExcel.core
             JObject hdr = (JObject)header.First.First.Last.First;
             hdr.Remove("Application_Header");
 
-            JObject headerJSON = new JObject();
-            headerJSON["name"] = fileName;
-            headerJSON["header"] = header;
-            ws.Cells[rowHeader, 1].Value = headerJSON.ToString();
-            ws.Hidden = eWorkSheetHidden.VeryHidden;
+            // Set Header To Sheet
+            ws.Cells[1, 1].Value = "Id";
+            ws.Cells[1, 2].Value = "Parent";
+            ws.Cells[1, 3].Value = "ParentId";
+            
+            ws.Cells[2, 1].Value = "Integer";
+            ws.Cells[2, 2].Value = "String";
+            ws.Cells[2, 3].Value = "Integer";
+
+            // Add Dictionary Header Header
+            if (!dictionaryHeader.ContainsKey("#HEADER#"))
+                dictionaryHeader.Add("#HEADER#", new List<string>());
+
+            // Type Data Header
+            dictionaryHeader["#HEADER#"].Add("Type");
+            int colType = dictionaryHeader["#HEADER#"].IndexOf("Type") + 4;
+            ws.Cells[1, colType].Value = "Type";
+            ws.Cells[2, colType].Value = "String";
+            ws.Cells[rowHeader, colType].Value = header.First.ToObject<JProperty>().Name;
+
+            // Coloring Type Data Header Background Cell
+            ws.Cells[1, colType].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            ws.Cells[1, colType].Style.Fill.BackgroundColor.SetColor(Color.Silver);
+
+            // Coloring Type Data Background Cell
+            ws.Cells[rowHeader, colType].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            ws.Cells[rowHeader, colType].Style.Fill.BackgroundColor.SetColor(ColorTranslator.FromHtml(config.getColorCells()[iterator].ToString()));
+
+            foreach (var prop in (JObject) header.First.First["Header"])
+            {
+                // Assign Dictionary Header Header
+                if (!dictionaryHeader["#HEADER#"].Contains(prop.Key))
+                {
+                    int colHeader = dictionaryHeader["#HEADER#"].Count() + 4;
+                    ws.Cells[1, colHeader].Value = prop.Key;
+                    ws.Cells[2, colHeader].Value = prop.Value.Type;
+                    dictionaryHeader["#HEADER#"].Add(prop.Key);
+
+                    // Coloring Header Background Cell
+                    ws.Cells[1, colHeader].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                    ws.Cells[1, colHeader].Style.Fill.BackgroundColor.SetColor(Color.Silver);
+                }
+
+                int col = dictionaryHeader["#HEADER#"].IndexOf(prop.Key) + 4;
+                
+                ws.Cells[rowHeader, 1].Value = iterator + 1;
+                ws.Cells[rowHeader, 2].Value = "-";
+                ws.Cells[rowHeader, 3].Value = 0;
+                ws.Cells[rowHeader, col].Value = prop.Value.ToString();
+
+                // Coloring  Background Cell
+                ws.Cells[rowHeader, col].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                ws.Cells[rowHeader, col].Style.Fill.BackgroundColor.SetColor(ColorTranslator.FromHtml(config.getColorCells()[iterator].ToString()));
+            }
+
+            // Hide Parent Child Pointer and Freeze Header
+            ws.Row(2).Hidden = true;
+            ws.Column(1).Hidden = true;
+            ws.Column(2).Hidden = true;
+            ws.Column(3).Hidden = true;
+            ws.View.FreezePanes(2, 1);
 
             // Start Recursive Looping with parameter Application Header as JObject
-            addSheet(iterator, (JObject)jsonObject.First.First.Last.First, package, null, 1, "-", 0);
+            addSheet(iterator, (JObject)jsonObject.First.First.Last.First, package, null, 1, "#HEADER#", iterator + 2);
         }
 
-        public JArray convertExcelTo(string fileName, string filePath, string convertType)
+        public JArray convertExcelTo(string filePath, string convertType)
         {
             JArray resultCollection = new JArray();
 
@@ -60,7 +117,7 @@ namespace CRDEConverterJsonExcel.core
                 JArray excelData = new JArray();
 
                 // Loop through the worksheets in the Excel file to JSON
-                for (int sheet = workbook.Worksheets.Count - 1; sheet >= 1; sheet--)
+                for (int sheet = workbook.Worksheets.Count - 1; sheet >= 0; sheet--)
                 {
                     // Get the worksheet by name
                     var worksheet = workbook.Worksheets[sheet];
@@ -130,39 +187,47 @@ namespace CRDEConverterJsonExcel.core
                 {
                     foreach (var item in data)
                     {
-                        JObject variable = (JObject)item.Value["Variables"];
+                        JObject variable = item.Key == "#HEADER#" ? (JObject)item.Value.First.First.First.First : (JObject)item.Value["Variables"];
                         Int64 idExcel = convertTryParse(variable["Id"].ToString(), "Integer");
                         Int64 parentIdExcel = convertTryParse(variable["ParentId"].ToString(), "Integer");
                         string parentExcel = variable["Parent"].ToString();
 
                         if (parentExcel != null && parentExcel != "" && parentExcel != "-")
                         {
-                            JProperty parent = (JProperty)excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
+                            var parent = excelData.Children<JObject>().Children<JObject>().FirstOrDefault(pnt =>
                             {
                                 JProperty parent = (JProperty)pnt;
-                                return parent.Name == parentExcel && parent.Value["Variables"]["Id"] != null && (int)parent.Value["Variables"]["Id"] == parentIdExcel;
+                                return parent.Value["Variables"] != null && parent.Name == parentExcel && parent.Value["Variables"]["Id"] != null && (int)parent.Value["Variables"]["Id"] == parentIdExcel;
                             });
 
-                            JToken parentValue = parent.Value;
-                            if (parentValue["Categories"] == null)
-                                parentValue["Categories"] = new JArray();
+                            JProperty parentProperty = (JProperty)parent;
+                            if (parentProperty.Name == "#HEADER#")
+                            {
+                                JObject skletonTypeHeader = new JObject();
+                                JObject skletonHeader = new JObject();
 
-                            ((JArray)parentValue["Categories"]).AddFirst(data);
+                                skletonHeader["Header"] = parentProperty.Value["Variables"];
+                                skletonHeader["Body"] = data;
+                                skletonTypeHeader[parentProperty.Value["Variables"]["Type"].ToString()] = skletonHeader;
+                                parentProperty.Value = skletonTypeHeader;
+                            }
+                            else
+                            {
+                                if (parentProperty.Value["Categories"] == null)
+                                    parentProperty.Value["Categories"] = new JArray();
+
+                                ((JArray)parentProperty.Value["Categories"]).AddFirst(data);
+                            }
                         }
                         else
                         {
-                            // Get Header JSOn
-                            ExcelWorksheet ws = package.Workbook.Worksheets["#HEADER#"];
-                            string sheetHeader = ws.Cells[(int)idExcel, 1].Text;
-                            JObject headerJSON = JObject.Parse(sheetHeader);
+                            JObject headerJSON = new JObject();
+                            headerJSON["header"] = cleanIdParentAndParentId(excelData[iterator]["#HEADER#"].ToObject<JObject>());
+                            headerJSON["name"] = headerJSON["header"].First.First.First.First["InquiryCode"];
                             result = new JObject();
 
                             try
                             {
-                                // Set Header JSON
-                                headerJSON["header"]["StrategyOneRequest"]["Body"] = excelData[iterator];
-                                headerJSON["header"] = cleanIdParentAndParentId((JObject)headerJSON["header"]);
-
                                 if (convertType == "json")
                                 {
                                     // Convert the data to JSON
@@ -208,15 +273,13 @@ namespace CRDEConverterJsonExcel.core
                     }
                 }
 
-                // Clean Id, Parent, And ParentId
-
+                // Save File
                 foreach (JObject res in resultCollection)
                 {
                     try
                     {
                         if (convertType == "json")
                         {
-                            // Save the JSON file
                             saveTextFile(@"\output\json\request\" + res["fileName"] + ".json", res["json"].ToString());
                         } 
                         else if (convertType == "txt")
@@ -227,7 +290,6 @@ namespace CRDEConverterJsonExcel.core
                                 resultCollection[0]["fileName"] = "MultipleFiles";
                             }
 
-                            // Save the JSON file
                             if (res.Next == null)
                                 saveTextFile(@"\output\txt\" + resultCollection[0]["fileName"] + ".txt", resultCollection[0]["json"].ToString());
                         }
@@ -257,6 +319,14 @@ namespace CRDEConverterJsonExcel.core
                         variable.Remove("Parent");
                         variable.Remove("ParentId");
                         data["Variables"] = variable;
+                    } else if (property.Key == "Header")
+                    {
+                        JObject variable = (JObject)property.Value;
+                        variable.Remove("Id");
+                        variable.Remove("Parent");
+                        variable.Remove("ParentId");
+                        variable.Remove("Type");
+                        data[property.Key] = variable;
                     }
                     else
                         cleanIdParentAndParentId((JObject)property.Value);
@@ -370,7 +440,7 @@ namespace CRDEConverterJsonExcel.core
 
                         // Coloring  Background Cell
                         worksheet.Cells[row, col].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(CRDE.getColorCells[iterator]);
+                        worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(ColorTranslator.FromHtml(config.getColorCells()[iterator].ToString()));
                     }
 
                     // Hide Parent Child Pointer and Freeze Header
@@ -405,14 +475,14 @@ namespace CRDEConverterJsonExcel.core
             }
         }
 
-        public void saveTextFile(string filePath, string json)
+        public void saveTextFile(string filePath, string json, string typeJSON = "req")
         {
             // Arrange File Name
             string fileName = filePath.Split(@"\").Last().Split(".").First();
             string extension = filePath.Split(@"\").Last().Split(".").Last();
             string filePathWithoutName = string.Join(@"\", filePath.Split(@"\")[0..^1]) + @"\";
 
-            string fname = fileName + "-" + GeneralMethod.getTimeStampNow() + "." + extension;
+            string fname = fileName + "-" + typeJSON + "-" + GeneralMethod.getTimeStampNow() + "." + extension;
             string textFilePath = GeneralMethod.getProjectDirectory() + filePathWithoutName + fname;
 
             // Save Text File

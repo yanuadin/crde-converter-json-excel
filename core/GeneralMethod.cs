@@ -17,7 +17,7 @@ namespace CRDEConverterJsonExcel.core
 
         public static string getTimeStampNow()
         {
-            return DateTime.Now.ToString("yyyyMMddHHmmssffff");
+            return DateTime.Now.ToString("dd_MM_yyyy-HH_mm");
         }
     }
 }

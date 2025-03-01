@@ -32,6 +32,7 @@ using System.Xml.Linq;
 using System.Collections;
 using CRDEConverterJsonExcel.config;
 using System.Data;
+using System.Net;
 
 namespace CRDEConverterJsonExcel;
 
@@ -40,6 +41,7 @@ public partial class MainWindow : Window
     Converter converter = new Converter();
     ConverterV2 converterV2 = new ConverterV2();
     List<Item> lb_requestItems = new List<Item>();
+    private CRDE config = new CRDE();
 
     // Define a class to represent each item in the ListBox
     public class Item
@@ -53,10 +55,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial; // Set license context for EPPlus
-
         // Initialize Endpoint Combobox
-        foreach (string endpoint in CRDE.getAllEndpoint())
-            cb_endpoint.Items.Add(endpoint);
+        cb_endpoint.Items.Add(config.getEnvironment()["ENDPOINT_REQUEST"]);
     }
 
     private void btnConvertJSONToExcel_Click(object sender, RoutedEventArgs e)
@@ -69,11 +69,15 @@ public partial class MainWindow : Window
                 JArray files = BrowseButton(sender, e, "json", true);
 
                 // Arrange File Name
-                string fname = files.First["name"].ToString();
-                if (files.Count > 1)
+                string fname = "";
+                if (files.Count == 1)
+                {
+                    JObject parseJSON = JObject.Parse(File.ReadAllText(files.First["path"].ToString()));
+                    fname = parseJSON.First.First.First.First["InquiryCode"].ToString();
+                } else
                     fname = "MultipleFiles";
 
-                fname += "-" + GeneralMethod.getTimeStampNow() + ".xlsx";
+                fname += "-req-" + GeneralMethod.getTimeStampNow() + ".xlsx";
 
                 // Loop through the multiple files
                 int iterator = 0;
@@ -83,7 +87,7 @@ public partial class MainWindow : Window
                     string fileName = file["name"].ToString();
                     string jsonContent = File.ReadAllText(filePath);
 
-                    converter.convertJSONToExcel(package, jsonContent, fileName, iterator++);
+                    converter.convertJSONToExcel(package, jsonContent, iterator++);
                 }
 
                 // Save Excel file
@@ -136,7 +140,7 @@ public partial class MainWindow : Window
         JArray result = new JArray();
 
         // Convertin to JSON
-        result = converter.convertExcelTo(fileName, filePath, "json");
+        result = converter.convertExcelTo(filePath, "json");
 
         // Bind the list to the ListBox
         int successCount = 0;
@@ -168,7 +172,7 @@ public partial class MainWindow : Window
         JArray result = new JArray();
 
         // Convertin to JSON
-        result = converter.convertExcelTo(fileName, filePath, "txt");
+        result = converter.convertExcelTo(filePath, "txt");
 
         // Print Message Box
         int successCount = 0;
@@ -278,7 +282,7 @@ public partial class MainWindow : Window
             {
                 foreach (Item it in selectedRequestItem)
                 {
-                    postRequestCRDE(it.json, it.fileName, iterator);
+                    postRequestCRDE(cb_endpoint.Text, it.json, it.fileName, iterator);
                 }
             } else
             {
@@ -286,11 +290,9 @@ public partial class MainWindow : Window
             }
         }
     }
-    private async void postRequestCRDE(string json, string saveFileNameResponse, int iterator)
+    private async void postRequestCRDE(string selectedEndpoint, string json, string saveFileNameResponse, int iterator)
     {
         saveFileNameResponse = saveFileNameResponse + "_response";
-        // API endpoint
-        string apiUrl = CRDE.ENDPOINT_REQUEST;
 
         // Parse JSON
         JObject jsonObject = JObject.Parse(json);
@@ -301,18 +303,18 @@ public partial class MainWindow : Window
             using (var package = new ExcelPackage())
             {
                 // Call the API and get the response
-                string responseJsonText = await Api.PostApiDataAsync(apiUrl, jsonObject);
+                string responseJsonText = await Api.PostApiDataAsync(selectedEndpoint, jsonObject);
                 JObject parseResponseJson = JObject.Parse(responseJsonText);
                 string responseJsonIndent = JsonConvert.SerializeObject(parseResponseJson, Formatting.Indented);
 
                 // Save Response to JSON File
-                converter.saveTextFile(@"\output\json\response\" + saveFileNameResponse + ".json", responseJsonIndent);
+                converter.saveTextFile(@"\output\json\response\" + saveFileNameResponse + ".json", responseJsonIndent, "res");
 
                 // Convert Response to Excel
-                converter.convertJSONToExcel(package, responseJsonText, saveFileNameResponse, iterator);
+                converter.convertJSONToExcel(package, responseJsonText, iterator);
 
                 // Save Excel file
-                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\response\" + saveFileNameResponse + '-' + GeneralMethod.getTimeStampNow() + ".xlsx";
+                string excelFilePath = GeneralMethod.getProjectDirectory() + @"\output\excel\response\" + saveFileNameResponse + "-res-" + GeneralMethod.getTimeStampNow() + ".xlsx";
                 package.SaveAs(new FileInfo(excelFilePath));
 
                 // Add to List Box Response
